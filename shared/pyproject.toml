@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "oni-shared"
+version = "0.1.0"
+description = "Shared Pydantic schemas and Kafka helpers for the Oni auction platform"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.7",
+    "confluent-kafka>=2.4",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["schemas*", "kafka*"]

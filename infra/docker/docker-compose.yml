@@ -1,0 +1,215 @@
+services:
+
+  # ─────────────────────────────────────────────
+  # INFRASTRUCTURE
+  # ─────────────────────────────────────────────
+
+  kafka:
+    image: confluentinc/cp-kafka:7.9.0
+    hostname: kafka
+    container_name: oni-kafka
+    ports:
+      - "9092:9092"       # internal broker (services)
+      - "9094:9094"       # external broker (host tools: kafka-ui, kcat)
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://0.0.0.0:9094,CONTROLLER://kafka:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_NUM_PARTITIONS: 10
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1    # 1 for local dev; set to 3 in production
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: "b3Zpb25pLWxvY2FsLWNsdXN0ZXItMQ"   # base64 UUID — stable across restarts
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "kafka:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.9.0
+    container_name: oni-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "/scripts/create-topics.sh"]
+    volumes:
+      - ../scripts:/scripts
+    restart: "no"
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: oni-kafka-ui
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: oni-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: oni-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: oni-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: oni
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-onidev}
+      POSTGRES_DB: oni
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../scripts/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oni -d oni"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ─────────────────────────────────────────────
+  # APPLICATION SERVICES
+  # ─────────────────────────────────────────────
+
+  auction-api:
+    build:
+      context: ../..
+      dockerfile: services/auction-api/Dockerfile
+    container_name: oni-auction-api
+    ports:
+      - "8000:8000"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql+asyncpg://oni:${POSTGRES_PASSWORD:-onidev}@postgres:5432/oni
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-prod}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173,exp://localhost:8081}
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: sync+restart
+          path: ../../services/auction-api
+          target: /app
+
+  bid-worker:
+    build:
+      context: ../..
+      dockerfile: services/bid-worker/Dockerfile
+    container_name: oni-bid-worker
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql+asyncpg://oni:${POSTGRES_PASSWORD:-onidev}@postgres:5432/oni
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  websocket-service:
+    build:
+      context: ../..
+      dockerfile: services/websocket-service/Dockerfile
+    container_name: oni-websocket
+    ports:
+      - "8001:8001"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_URL: redis://redis:6379
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173,exp://localhost:8081}
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  auction-timer:
+    build:
+      context: ../..
+      dockerfile: services/auction-timer/Dockerfile
+    container_name: oni-auction-timer
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql+asyncpg://oni:${POSTGRES_PASSWORD:-onidev}@postgres:5432/oni
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────
+  # FUTURE: FRONTEND (uncomment when ready)
+  # ─────────────────────────────────────────────
+
+  # react-app:
+  #   build:
+  #     context: ../../frontend/react-app
+  #     dockerfile: Dockerfile
+  #   container_name: oni-react
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     VITE_API_URL: http://localhost:8000
+  #     VITE_WS_URL: ws://localhost:8001
+  #   depends_on:
+  #     - auction-api
+  #     - websocket-service
+
+# ─────────────────────────────────────────────
+# VOLUMES
+# ─────────────────────────────────────────────
+
+volumes:
+  kafka_data:
+  redis_data:
+  postgres_data:

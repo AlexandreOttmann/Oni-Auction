@@ -1,0 +1,21 @@
+# Exclude everything by default, then whitelist what services need
+**
+
+# Allow shared package
+!shared/
+
+# Allow all service source + Dockerfiles
+!services/
+!services/*/
+!services/**/*.py
+!services/**/*.txt
+!services/**/Dockerfile
+
+# Exclude test files and caches within services
+services/**/__pycache__
+services/**/*.pyc
+services/**/.pytest_cache
+services/**/.mypy_cache
+services/**/.ruff_cache
+services/**/htmlcov
+services/**/.coverage

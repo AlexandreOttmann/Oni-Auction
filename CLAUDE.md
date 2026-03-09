@@ -2,7 +2,7 @@
 
 Event-driven auction platform for supply chain / procurement. React web app + Python microservices + Kafka.
 
-**Context files:** Always read `.claude/context/` before starting any task.
+**Before any task:** Read `.claude/context/STATUS.md` first — it tells you exactly what's done and what to build next. Then read the specific context files listed for your task.
 
 ---
 
