@@ -43,9 +43,13 @@ Phase 5 — Docker + Kubernetes ⬜ NOT STARTED
 | auction-api (POST /bid) | — | ⬜ not started |
 | bid-worker (English + Dutch logic) | — | ⬜ not started |
 | websocket-service | — | ⬜ not started |
-| React auction page (Buyer view) | — | ⬜ not started |
+| React auction page (Buyer view) | `feat/bid-worker-ws-service` | 🎨 design done |
 
-**Current focus:** auction-api
+**Current focus:** auction-api (backend) + React auction page implementation (frontend — design ready)
+
+**What exists now (design):**
+- `.claude/design-specs/design-tokens.ts` — full token system (colors, spacing, typography, animation)
+- `.claude/design-specs/live-auction-buyer.md` — complete Buyer "Live Auction" page spec (English + Dutch variants, all component states, WS event mapping, Zustand store shape, component file map, Tailwind class reference)
 
 ---
 
@@ -67,10 +71,9 @@ Phase 5 — Docker + Kubernetes ⬜ NOT STARTED
    - Consumes `auction_updates` + `auction_events`
    - Sends `AUCTION_STATE` snapshot on connect
 
-4. `/ux-ui-designer` → design Buyer auction page
-   - Output to `.claude/design-specs/live-auction-buyer.md`
-
-5. `/senior-frontend` → implement Buyer auction page
+4. `/senior-frontend` → implement Buyer auction page
+   - Design spec ready: `.claude/design-specs/live-auction-buyer.md`
+   - Tokens ready: `.claude/design-specs/design-tokens.ts`
 
 ---
 

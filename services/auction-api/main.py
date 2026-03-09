@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -16,18 +17,33 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+async def _kafka_poll_loop():
+    """
+    Background task that calls producer.poll() every 50ms.
+    confluent-kafka's Producer is not async — poll() must be called regularly
+    to trigger delivery callbacks and actually flush the internal send queue.
+    Without this, messages produced in async handlers may never be sent.
+    """
+    producer = get_producer()
+    while True:
+        producer.poll(0)
+        await asyncio.sleep(0.05)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting auction-api | env=%s", settings.ENVIRONMENT)
     app.state.redis = aioredis.from_url(settings.REDIS_URL, decode_responses=False)
     app.state.kafka_producer = get_producer()
+    poll_task = asyncio.create_task(_kafka_poll_loop())
     logger.info("Redis and Kafka producer ready")
 
     yield
 
     # Shutdown
     logger.info("Shutting down auction-api...")
+    poll_task.cancel()
     await flush_on_shutdown()
     await app.state.redis.aclose()
     logger.info("Shutdown complete")

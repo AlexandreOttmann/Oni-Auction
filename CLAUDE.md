@@ -92,3 +92,27 @@ Full domain vocabulary in `.claude/context/domain-glossary.md`.
 - Feature branches per agent/slice, worked in isolated worktrees
 - Name branches clearly: `feat/auction-api`, `feat/bid-worker`, `feat/live-auction-ui`
 - Security review required before any branch merges to main
+
+---
+
+## Post-Task Protocol (Mandatory for Every Agent)
+
+When your task is complete, **before ending your session**, update `.claude/context/STATUS.md`:
+
+1. **Mark your task ✅** in the relevant phase table
+2. **Add a "What exists now" bullet** describing what you built and where it lives (file paths)
+3. **Remove your task from "Up next"** if it was listed there
+4. **Update "Current focus"** to the next logical task if you know it
+5. **Add your branch** to the Active Branches table with status `🔄 open` or `✅ merged`
+
+Keep entries short — one line per item. The goal is that the next agent can read STATUS.md in 30 seconds and know exactly where to start.
+
+**Example update after building auction-api:**
+```markdown
+| auction-api (POST /bid) | feat/auction-api | ✅ done |
+
+What exists now:
+- `services/auction-api/main.py` — FastAPI app, POST /bid, GET /auction/{id}
+- `services/auction-api/routers/bids.py` — bid endpoint, Redis check, Kafka produce
+- `services/auction-api/Dockerfile` — python:3.12-slim
+```

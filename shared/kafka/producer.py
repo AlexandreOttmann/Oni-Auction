@@ -28,10 +28,10 @@ def get_producer() -> Producer:
             "queue.buffering.max.ms": 5,          # max 5ms batching delay — keeps latency low
             "queue.buffering.max.messages": 100_000,
             "compression.type": "lz4",
-            "acks": "all",                         # wait for all ISR replicas — no data loss
+            "acks": "1",                           # leader ack — sufficient for local dev; use "all" in prod
             "retries": 5,
             "retry.backoff.ms": 100,
-            "enable.idempotence": True,            # exactly-once producer semantics
+            # enable.idempotence requires a stable coordinator — enable in production only
         })
     return _producer
 
