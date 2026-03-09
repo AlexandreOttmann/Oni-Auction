@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(gh api repos/alirezarezvani/claude-skills/contents --jq '.[].name')",
+      "Bash(curl -s https://api.github.com/repos/alirezarezvani/claude-skills/contents)",
+      "Bash(python3 -c \"import sys,json; [print\\(f[''name'']\\) for f in json.load\\(sys.stdin\\) if isinstance\\(f, dict\\)]\")",
+      "Bash(gh api repos/alirezarezvani/claude-skills/contents/engineering --jq '.[].name')",
+      "Bash(curl -s \"https://api.github.com/repos/alirezarezvani/claude-skills/contents/engineering\")",
+      "Bash(python3 -c \"import sys,json; [print\\(f[''name'']\\) for f in json.load\\(sys.stdin\\)]\")",
+      "Bash(curl -s \"https://api.github.com/repos/alirezarezvani/claude-skills/contents/engineering-team\")",
+      "Bash(curl -s \"https://api.github.com/repos/alirezarezvani/claude-skills/contents/agents\")",
+      "Bash(for skill in senior-frontend senior-backend senior-security senior-qa)",
+      "Bash(do)",
+      "Bash(echo \"=== $skill ===\")",
+      "Bash(curl -s \"https://api.github.com/repos/alirezarezvani/claude-skills/contents/engineering-team/$skill/SKILL.md\")",
+      "Bash(python3 -c \"import sys,json,base64; d=json.load\\(sys.stdin\\); print\\(base64.b64decode\\(d[''content'']\\).decode\\(\\)\\)\" echo \"\" done)",
+      "Bash(python3 -c \"import sys,json,base64; d=json.load\\(sys.stdin\\); print\\(base64.b64decode\\(d[''content'']\\).decode\\(\\)[:2000]\\)\" echo \"\" done)",
+      "Bash(python3 -:*)",
+      "WebFetch(domain:raw.githubusercontent.com)"
+    ]
+  }
+}
