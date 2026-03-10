@@ -1,14 +1,71 @@
 import json
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 import redis.asyncio as aioredis
+from pydantic import BaseModel
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from dependencies import get_redis
+from dependencies import get_db, get_redis
 from shared.schemas.auction import AuctionState, AuctionStatus, AuctionType, BidEntry
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auctions", tags=["auctions"])
+
+
+class AuctionListItem(BaseModel):
+    auction_id: str
+    title: str
+    auction_type: AuctionType
+    status: AuctionStatus
+    current_bid: Optional[float] = None
+    leader: Optional[str] = None
+    ends_at: Optional[str] = None
+    bidder_count: int
+    bids_per_min: float
+
+
+@router.get("", response_model=list[AuctionListItem])
+async def list_auctions(db: AsyncSession = Depends(get_db)):
+    """Return all auctions with live bid summary from the database."""
+    result = await db.execute(text("""
+        SELECT
+            a.id          AS auction_id,
+            a.title       AS title,
+            a.type        AS auction_type,
+            a.status      AS status,
+            a.ends_at     AS ends_at,
+            MAX(b.amount) AS current_bid,
+            u.name        AS leader,
+            COUNT(b.id)   AS bid_count,
+            COUNT(DISTINCT b.user_id) AS bidder_count
+        FROM auctions a
+        LEFT JOIN bids b ON b.auction_id = a.id AND b.status = 'VALID'
+        LEFT JOIN users u ON u.id = (
+            SELECT user_id FROM bids
+            WHERE auction_id = a.id AND status = 'VALID'
+            ORDER BY amount DESC LIMIT 1
+        )
+        GROUP BY a.id, a.title, a.type, a.status, a.ends_at, u.name
+        ORDER BY a.starts_at DESC NULLS LAST
+    """))
+    rows = result.mappings().all()
+    return [
+        AuctionListItem(
+            auction_id=str(row["auction_id"]),
+            title=row["title"],
+            auction_type=AuctionType(row["auction_type"]),
+            status=AuctionStatus(row["status"]),
+            current_bid=float(row["current_bid"]) if row["current_bid"] is not None else None,
+            leader=row["leader"],
+            ends_at=row["ends_at"].isoformat() if row["ends_at"] else None,
+            bidder_count=row["bidder_count"] or 0,
+            bids_per_min=0.0,
+        )
+        for row in rows
+    ]
 
 
 @router.get("/{auction_id}", response_model=AuctionState)

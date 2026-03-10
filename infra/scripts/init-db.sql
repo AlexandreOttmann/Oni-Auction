@@ -5,11 +5,12 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- Users
 CREATE TABLE IF NOT EXISTS users (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name       TEXT NOT NULL,
-  email      TEXT UNIQUE NOT NULL,
-  role       TEXT NOT NULL CHECK (role IN ('ADMIN', 'BUYER', 'SELLER')),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name          TEXT NOT NULL,
+  email         TEXT UNIQUE NOT NULL,
+  role          TEXT NOT NULL CHECK (role IN ('ADMIN', 'BUYER', 'SELLER')),
+  password_hash TEXT NOT NULL DEFAULT '',
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Lots
@@ -57,8 +58,9 @@ CREATE INDEX IF NOT EXISTS idx_auctions_status ON auctions (status);
 CREATE INDEX IF NOT EXISTS idx_auctions_starts_at ON auctions (starts_at);
 
 -- Seed data for local dev
-INSERT INTO users (id, name, email, role) VALUES
-  ('00000000-0000-0000-0000-000000000001', 'Admin User',   'admin@oni.local',  'ADMIN'),
-  ('00000000-0000-0000-0000-000000000002', 'Acme Corp',    'buyer@oni.local',  'BUYER'),
-  ('00000000-0000-0000-0000-000000000003', 'Parts Seller', 'seller@oni.local', 'SELLER')
+-- Passwords are bcrypt hashes of "oni-dev-password"
+INSERT INTO users (id, name, email, role, password_hash) VALUES
+  ('00000000-0000-0000-0000-000000000001', 'Admin User',   'admin@oni.local',  'ADMIN',  '$2b$12$vruTHK745pOXMw26KIGoB.kZvzJBkAvdDUTrUftYSidtWmXPf7dY.'),
+  ('00000000-0000-0000-0000-000000000002', 'Acme Corp',    'buyer@oni.local',  'BUYER',  '$2b$12$vruTHK745pOXMw26KIGoB.kZvzJBkAvdDUTrUftYSidtWmXPf7dY.'),
+  ('00000000-0000-0000-0000-000000000003', 'Parts Seller', 'seller@oni.local', 'SELLER', '$2b$12$vruTHK745pOXMw26KIGoB.kZvzJBkAvdDUTrUftYSidtWmXPf7dY.')
 ON CONFLICT DO NOTHING;

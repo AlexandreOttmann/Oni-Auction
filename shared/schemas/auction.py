@@ -9,6 +9,7 @@ class AuctionType(StrEnum):
 
 
 class AuctionStatus(StrEnum):
+    DRAFT = "DRAFT"
     SCHEDULED = "SCHEDULED"
     ACTIVE = "ACTIVE"
     CLOSING = "CLOSING"

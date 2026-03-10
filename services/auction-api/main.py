@@ -5,8 +5,9 @@ from contextlib import asynccontextmanager
 import redis.asyncio as aioredis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from routers import auctions, bids
+from routers import auctions, auth, bids
 from settings import settings
 from shared.kafka.producer import flush_on_shutdown, get_producer
 
@@ -37,7 +38,10 @@ async def lifespan(app: FastAPI):
     app.state.redis = aioredis.from_url(settings.REDIS_URL, decode_responses=False)
     app.state.kafka_producer = get_producer()
     poll_task = asyncio.create_task(_kafka_poll_loop())
-    logger.info("Redis and Kafka producer ready")
+    engine = create_async_engine(settings.DATABASE_URL, pool_size=5, max_overflow=10)
+    app.state.db_session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    app.state.db_engine = engine
+    logger.info("Redis, Kafka producer, and DB ready")
 
     yield
 
@@ -46,6 +50,7 @@ async def lifespan(app: FastAPI):
     poll_task.cancel()
     await flush_on_shutdown()
     await app.state.redis.aclose()
+    await app.state.db_engine.dispose()
     logger.info("Shutdown complete")
 
 
@@ -65,6 +70,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(bids.router)
 app.include_router(auctions.router)
 
