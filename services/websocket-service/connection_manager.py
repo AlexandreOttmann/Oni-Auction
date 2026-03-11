@@ -29,9 +29,12 @@ class ConnectionManager:
             del self.rooms[lot_id]
         logger.debug("WS disconnected | lot=%s", lot_id)
 
+    def watcher_count(self, lot_id: str) -> int:
+        return len(self.rooms.get(lot_id, set()))
+
     async def broadcast(self, lot_id: str, message: dict) -> None:
         dead: set[WebSocket] = set()
-        for ws in self.rooms.get(lot_id, set()):
+        for ws in list(self.rooms.get(lot_id, set())):
             try:
                 await ws.send_json(message)
             except Exception:

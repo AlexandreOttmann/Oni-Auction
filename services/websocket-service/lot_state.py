@@ -30,6 +30,8 @@ async def get_lot_snapshot(r: aioredis.Redis, auction_id: str, lot_id: str) -> d
         "currency":     state.get("currency", "USD"),
         "highest_bid":  float(state["highest_bid"]) if "highest_bid" in state else None,
         "current_price": float(state["current_price"]) if "current_price" in state else None,
+        "price_floor":   float(state["price_floor"]) if "price_floor" in state else None,
+        "price_step":    float(state["price_step"]) if "price_step" in state else None,
         "current_round": int(state["current_round"]) if "current_round" in state else None,
         "leader":       state.get("leader"),
         "ends_at":      state.get("ends_at", ""),

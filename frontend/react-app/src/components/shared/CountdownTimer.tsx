@@ -3,6 +3,7 @@ import { useState, useEffect, type FC } from 'react'
 interface CountdownTimerProps {
   endsAt: string
   status: 'SCHEDULED' | 'ACTIVE' | 'CLOSING' | 'CLOSED'
+  startsAt?: string  // required for meaningful SCHEDULED display
   className?: string
 }
 
@@ -15,24 +16,31 @@ function formatSeconds(totalSeconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-export const CountdownTimer: FC<CountdownTimerProps> = ({ endsAt, status, className = '' }) => {
+export const CountdownTimer: FC<CountdownTimerProps> = ({ endsAt, startsAt, status, className = '' }) => {
+  // For SCHEDULED use startsAt; for active/closing use endsAt
+  const targetIso = status === 'SCHEDULED' ? (startsAt ?? '') : endsAt
+
   const [secondsLeft, setSecondsLeft] = useState(() =>
-    Math.max(0, Math.floor((new Date(endsAt).getTime() - Date.now()) / 1000))
+    targetIso ? Math.max(0, Math.floor((new Date(targetIso).getTime() - Date.now()) / 1000)) : 0
   )
 
   useEffect(() => {
-    if (status === 'CLOSED') return
+    if (status === 'CLOSED' || !targetIso) return
+    setSecondsLeft(Math.max(0, Math.floor((new Date(targetIso).getTime() - Date.now()) / 1000)))
     const interval = setInterval(() => {
-      setSecondsLeft(Math.max(0, Math.floor((new Date(endsAt).getTime() - Date.now()) / 1000)))
+      setSecondsLeft(Math.max(0, Math.floor((new Date(targetIso).getTime() - Date.now()) / 1000)))
     }, 1000)
     return () => clearInterval(interval)
-  }, [endsAt, status])
+  }, [targetIso, status])
 
   if (status === 'CLOSED') {
     return <span className={`tabular-nums text-zinc-500 ${className}`}>—</span>
   }
 
   if (status === 'SCHEDULED') {
+    if (!startsAt || secondsLeft <= 0) {
+      return <span className={`text-violet-400 ${className}`}>Starting soon</span>
+    }
     const h = Math.floor(secondsLeft / 3600)
     const label = h > 0 ? `starts in ${h}h` : `starts in ${Math.ceil(secondsLeft / 60)}m`
     return <span className={`text-violet-400 ${className}`}>{label}</span>

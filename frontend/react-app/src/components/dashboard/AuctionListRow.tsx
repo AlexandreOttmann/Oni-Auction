@@ -1,7 +1,7 @@
-import type { FC } from 'react'
+import { useState, useEffect, type FC } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'motion/react'
-import type { AuctionListItem } from '../../hooks/useAuctionList'
+import type { AuctionListItem, AuctionStatus } from '../../hooks/useAuctionList'
 import { StatusBadge } from '../shared/StatusBadge'
 import { AuctionTypeBadge } from '../shared/AuctionTypeBadge'
 import { CountdownTimer } from '../shared/CountdownTimer'
@@ -11,9 +11,31 @@ interface AuctionListRowProps {
   auction: AuctionListItem
 }
 
+function getEffectiveStatus(auction: AuctionListItem): AuctionStatus {
+  if (auction.status === 'CLOSED' || auction.status === 'SCHEDULED') return auction.status
+  if (auction.ends_at && new Date(auction.ends_at).getTime() <= Date.now()) return 'CLOSED'
+  return auction.status
+}
+
 export const AuctionListRow: FC<AuctionListRowProps> = ({ auction }) => {
   const navigate = useNavigate()
-  const isClosing = auction.status === 'CLOSING'
+  const [status, setStatus] = useState<AuctionStatus>(() => getEffectiveStatus(auction))
+
+  // Fire a one-shot timer to flip status → CLOSED exactly when ends_at passes
+  useEffect(() => {
+    const derived = getEffectiveStatus(auction)
+    setStatus(derived)
+
+    if (derived === 'CLOSED' || !auction.ends_at) return
+    const remaining = new Date(auction.ends_at).getTime() - Date.now()
+    if (remaining <= 0) return
+
+    const timer = setTimeout(() => setStatus('CLOSED'), remaining)
+    return () => clearTimeout(timer)
+  }, [auction.ends_at, auction.status])
+
+  const isClosing = status === 'CLOSING'
+  const isLive = status === 'ACTIVE' || status === 'CLOSING'
 
   return (
     <motion.div
@@ -27,7 +49,7 @@ export const AuctionListRow: FC<AuctionListRowProps> = ({ auction }) => {
     >
       {/* Status badge */}
       <div className="w-[110px] shrink-0">
-        <StatusBadge status={auction.status} />
+        <StatusBadge status={status} />
       </div>
 
       {/* Lot title + meta */}
@@ -46,13 +68,7 @@ export const AuctionListRow: FC<AuctionListRowProps> = ({ auction }) => {
       {/* Current bid */}
       <div className="w-[110px] shrink-0 text-right">
         {auction.current_bid != null ? (
-          <span
-            className={`tabular-nums text-sm font-bold ${
-              auction.status === 'ACTIVE' || auction.status === 'CLOSING'
-                ? 'text-green-400'
-                : 'text-zinc-500'
-            }`}
-          >
+          <span className={`tabular-nums text-sm font-bold ${isLive ? 'text-green-400' : 'text-zinc-500'}`}>
             ${auction.current_bid.toLocaleString()}
           </span>
         ) : (
@@ -62,8 +78,12 @@ export const AuctionListRow: FC<AuctionListRowProps> = ({ auction }) => {
 
       {/* Timer */}
       <div className="w-[100px] shrink-0 text-right text-sm">
-        {auction.ends_at && auction.status !== 'CLOSED' && auction.status !== 'DRAFT' && auction.status !== 'SETTLED' ? (
-          <CountdownTimer endsAt={auction.ends_at} status={auction.status as 'SCHEDULED' | 'ACTIVE' | 'CLOSING'} />
+        {auction.ends_at && status !== 'CLOSED' ? (
+          <CountdownTimer
+            endsAt={auction.ends_at}
+            startsAt={auction.starts_at}
+            status={status as 'SCHEDULED' | 'ACTIVE' | 'CLOSING'}
+          />
         ) : (
           <span className="text-zinc-600">—</span>
         )}
@@ -71,9 +91,7 @@ export const AuctionListRow: FC<AuctionListRowProps> = ({ auction }) => {
 
       {/* Heat bar */}
       <div className="flex w-8 shrink-0 items-center justify-center">
-        {auction.status !== 'CLOSED' && auction.status !== 'SCHEDULED' && (
-          <HeatBar bidsPerMin={auction.bids_per_min} />
-        )}
+        {isLive && <HeatBar bidsPerMin={auction.bids_per_min} />}
       </div>
 
       {/* Arrow */}

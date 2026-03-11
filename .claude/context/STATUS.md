@@ -45,7 +45,7 @@ Phase 5 — Docker + Kubernetes ⬜ NOT STARTED
 | auction-api (POST /bids, GET /auctions/{id}, CORS) | `feat/infra-foundation` | ✅ done |
 | bid-worker (English + Dutch logic, Redis, DB, DLQ) | `feat/bid-worker-ws-service` | ✅ done |
 | websocket-service (WS endpoint + Kafka→Redis pub/sub) | `feat/bid-worker-ws-service` | ✅ done |
-| auction-timer (lot lifecycle, Dutch rounds) | `feat/bid-worker-ws-service` | ✅ pushed |
+| auction-timer (lot lifecycle, Dutch rounds) | `feat/bid-worker-ws-service` | ✅ done |
 | React auction page (Buyer view) | `feat/bid-worker-ws-service` | ✅ done |
 | React Login page | `feat/bid-worker-ws-service` | ✅ done |
 | React Homepage | `feat/bid-worker-ws-service` | ✅ done |
@@ -55,6 +55,7 @@ Phase 5 — Docker + Kubernetes ⬜ NOT STARTED
 - `services/auction-api/` — POST /bids (Kafka produce), GET /auctions (DB list with bid aggregation), GET /auctions/{id} (Redis read), POST/GET /auth/* (cookie auth), health check
 - `services/bid-worker/` — English bid validation, Dutch win logic, Redis updates, PostgreSQL persistence, DLQ
 - `services/websocket-service/` — /ws/lot/{lot_id}, state snapshot on connect, Kafka→Redis pub/sub broadcast, /stats
+- `services/auction-timer/` — scheduler loop (SCHEDULED→ACTIVE, English CLOSING/CLOSED, Dutch round advancement + no-winner close), soft-close Kafka consumer (extends ends_at on last-minute English bids), publishes LOT_OPENED / LOT_CLOSING / LOT_CLOSED / DUTCH_ROUND_ADVANCED to auction_events + Redis pub/sub
 - `frontend/react-app/` — full React 18 app: 4 pages, 30+ components, Zustand stores, TanStack Query, motion.dev animations, D3 charts
   - `src/pages/` — HomePage, LoginPage, AdminDashboard, LiveAuction
   - `src/components/home/` — HomeNav, HeroSection, BidTickerBackground, FeatureStrip, LivePreviewPanel, HomeFooter
@@ -95,14 +96,37 @@ All specs in `.claude/design-specs/`:
 
 ---
 
+## Phase 4 — Quality / Security 🔄
+
+| Task | Branch | Status |
+|------|--------|--------|
+| Unit tests: auction-timer + bid-worker | `feat/bid-worker-ws-service` | ✅ done |
+| Security review | — | ⬜ next |
+| Load test (k6) | `feat/bid-worker-ws-service` | ✅ done |
+
+**What exists:**
+- `services/auction-timer/tests/test_scheduler.py` — 21 tests: `_parse_dt`, English/Dutch/scheduled handlers, `_process_lot`
+- `services/auction-timer/tests/test_soft_close.py` — 6 tests: all filter branches + extension path
+- `services/bid-worker/tests/test_processor.py` — 11 tests: English accept/reject, Dutch win/reject, guards, Redis retry + DLQ
+- `services/auction-timer/tests/conftest.py` + `services/bid-worker/tests/conftest.py` — stub confluent_kafka, psycopg2, pydantic_settings
+- Run: `python3 -m pytest services/auction-timer/tests/ services/bid-worker/tests/ -v` → **38 passed**
+
+**Load test scripts:**
+- `k6/concurrent-bidders.js` — 500 VUs, English lot, Kafka/Redis throughput
+- `k6/ws-viewers.js` — 1000 concurrent WS connections, broadcast latency
+- `k6/bid-storm.js` — 500 req/s constant-arrival-rate, Kafka backpressure
+- `k6/dutch-race.js` — 100 simultaneous Dutch strikes, atomicity check (`count<=1`)
+- `k6/mixed-realistic.js` — 200 bidders + 500 viewers + 100 dashboard pollers
+- `k6/run-all.sh` — sequential runner with JSON output to `k6/results/`
+- `k6/helpers/auth.js` — cookie-based auth helper (`loginAndGetCookie`)
+
+Run: `bash k6/run-all.sh` (requires `brew install k6` + stack running + seed-redis.sh)
+
+---
+
 ## Up Next
 
-1. **`/senior-backend`** → `auction-timer` service
-   - Open lots (SCHEDULED → ACTIVE, seed Redis state)
-   - English soft-close (extend `ends_at` on last-minute bids)
-   - Dutch round advancement (decrement `current_price` by `price_step` every `round_duration` seconds)
-   - Close lots (ACTIVE/CLOSING → CLOSED), publish `LOT_CLOSED` event
-   - Context: `kafka-design.md`, `data-models.md`
+1. **`/senior-security`** → threat model + secure code review before any branch merges to main
 
 ---
 

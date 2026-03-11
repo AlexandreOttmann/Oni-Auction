@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dependencies import get_db, get_redis
+from routers.auth import get_current_user
 from shared.schemas.auction import AuctionState, AuctionStatus, AuctionType, BidEntry
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,10 @@ class AuctionListItem(BaseModel):
 
 
 @router.get("", response_model=list[AuctionListItem])
-async def list_auctions(db: AsyncSession = Depends(get_db)):
+async def list_auctions(
+    _: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """Return all auctions with live bid summary from the database."""
     result = await db.execute(text("""
         SELECT
@@ -40,7 +44,10 @@ async def list_auctions(db: AsyncSession = Depends(get_db)):
             MAX(b.amount) AS current_bid,
             u.name        AS leader,
             COUNT(b.id)   AS bid_count,
-            COUNT(DISTINCT b.user_id) AS bidder_count
+            COUNT(DISTINCT b.user_id) AS bidder_count,
+            COUNT(b.id) FILTER (
+                WHERE b.placed_at > NOW() - INTERVAL '5 minutes'
+            )::float / 5.0  AS bids_per_min
         FROM auctions a
         LEFT JOIN bids b ON b.auction_id = a.id AND b.status = 'VALID'
         LEFT JOIN users u ON u.id = (
@@ -62,7 +69,7 @@ async def list_auctions(db: AsyncSession = Depends(get_db)):
             leader=row["leader"],
             ends_at=row["ends_at"].isoformat() if row["ends_at"] else None,
             bidder_count=row["bidder_count"] or 0,
-            bids_per_min=0.0,
+            bids_per_min=float(row["bids_per_min"] or 0.0),
         )
         for row in rows
     ]
@@ -71,6 +78,7 @@ async def list_auctions(db: AsyncSession = Depends(get_db)):
 @router.get("/{auction_id}", response_model=AuctionState)
 async def get_auction(
     auction_id: str,
+    _: dict = Depends(get_current_user),
     r: aioredis.Redis = Depends(get_redis),
 ):
     """

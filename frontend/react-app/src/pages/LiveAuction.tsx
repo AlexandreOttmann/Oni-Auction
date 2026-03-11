@@ -1,4 +1,4 @@
-import { useEffect, type FC } from 'react'
+import { type FC } from 'react'
 import { useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'motion/react'
 import { useAuctionStore } from '../stores/auctionStore'
@@ -14,49 +14,34 @@ import { BidHistory } from '../components/auction/BidHistory'
 import { LotDetails } from '../components/auction/LotDetails'
 import { OutcomePanel } from '../components/auction/OutcomePanel'
 
-// Seed mock state for development (no backend yet)
-const MOCK_STATE = {
-  auctionId: 'a1',
-  title: 'Stainless Steel Coil 304 — 50 MT',
-  auctionType: 'ENGLISH' as const,
-  status: 'ACTIVE' as const,
-  currentPrice: 14200,
-  leader: 'Bidder 3',
-  endsAt: new Date(Date.now() + 4 * 60 * 1000 + 32 * 1000).toISOString(),
-  bidHistory: [
-    { amount: 14200, bidder: 'Bidder 3', timestamp: new Date(Date.now() - 60000).toISOString(), isOwn: false },
-    { amount: 13900, bidder: 'Bidder 1', timestamp: new Date(Date.now() - 120000).toISOString(), isOwn: false },
-    { amount: 13500, bidder: 'You',      timestamp: new Date(Date.now() - 180000).toISOString(), isOwn: true },
-    { amount: 13200, bidder: 'Bidder 6', timestamp: new Date(Date.now() - 240000).toISOString(), isOwn: false },
-  ],
-  bidderCount: 7,
-  userId: 'user-self',
-  userBidStatus: 'losing' as const,
-  userLastBid: 13500,
-  wsStatus: 'connected' as const,
-}
-
 const LiveAuction: FC = () => {
   const { auctionId } = useParams<{ auctionId: string }>()
   const store = useAuctionStore()
-
-  // Seed mock state while backend is offline
-  useEffect(() => {
-    if (!store.auctionId) {
-      useAuctionStore.setState({ ...MOCK_STATE, auctionId: auctionId ?? 'a1' })
-    }
-  }, [auctionId, store.auctionId])
 
   useAuctionWebSocket(auctionId ?? '')
 
   const {
     title, auctionType, status, currentPrice, endsAt,
-    bidHistory, bidderCount, currentRound, priceFloor,
+    bidHistory, bidderCount, watcherCount, currentRound, priceFloor,
     userBidStatus, userLastBid, wsStatus,
   } = store
 
   const isClosed = status === 'CLOSED'
   const isWinning = userBidStatus === 'winning'
+
+  // Waiting for the WS AUCTION_STATE snapshot
+  if (!store.auctionId) {
+    return (
+      <div className="flex min-h-screen flex-col bg-[#09090B]">
+        <div className="h-14 border-b border-zinc-800 bg-zinc-900/80" />
+        <div className="flex flex-1 flex-col gap-6 p-6 lg:p-8 animate-pulse">
+          <div className="h-24 rounded-xl bg-zinc-800/60" />
+          <div className="h-8 w-48 rounded bg-zinc-800/60" />
+          <div className="h-12 w-64 rounded-lg bg-zinc-800/60" />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-[#09090B]">
@@ -95,7 +80,7 @@ const LiveAuction: FC = () => {
                 <CountdownTimer endsAt={endsAt} status={status} className="text-2xl" />
               </div>
             )}
-            <BidderCount count={bidderCount} />
+            <BidderCount bidderCount={bidderCount} watcherCount={watcherCount} />
           </div>
 
           <UserStatusBadge status={userBidStatus} />

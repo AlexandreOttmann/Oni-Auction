@@ -147,6 +147,11 @@ services:
       kafka-init:
         condition: service_completed_successfully
     restart: unless-stopped
+    develop:
+      watch:
+        - action: sync+restart
+          path: ../../services/bid-worker
+          target: /app
 
   websocket-service:
     build:
@@ -168,6 +173,11 @@ services:
       kafka-init:
         condition: service_completed_successfully
     restart: unless-stopped
+    develop:
+      watch:
+        - action: sync+restart
+          path: ../../services/websocket-service
+          target: /app
 
   auction-timer:
     build:
@@ -189,6 +199,11 @@ services:
       kafka-init:
         condition: service_completed_successfully
     restart: unless-stopped
+    develop:
+      watch:
+        - action: sync+restart
+          path: ../../services/auction-timer
+          target: /app
 
   # ─────────────────────────────────────────────
   # FUTURE: FRONTEND (uncomment when ready)

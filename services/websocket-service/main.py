@@ -19,10 +19,31 @@ from contextlib import asynccontextmanager
 import redis.asyncio as aioredis
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from jose import JWTError, jwt
 
 from connection_manager import manager
 from lot_state import get_lot_snapshot
 from settings import settings
+
+_ALGORITHM = "HS256"
+_COOKIE_NAME = "oni_token"
+
+
+def _authenticate_websocket(websocket: WebSocket) -> str | None:
+    """
+    Validate the HttpOnly JWT cookie on the WebSocket handshake.
+    Returns the user_id (sub claim) on success, None on failure.
+    Browsers send cookies automatically on same-origin WS upgrades.
+    """
+    token = websocket.cookies.get(_COOKIE_NAME)
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[_ALGORITHM])
+        user_id = payload.get("sub")
+        return user_id if user_id else None
+    except JWTError:
+        return None
 
 logging.basicConfig(
     level=logging.DEBUG if settings.ENVIRONMENT == "development" else logging.INFO,
@@ -34,6 +55,26 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────
 # Background tasks
 # ─────────────────────────────────────────────
+
+async def watcher_count_broadcast_loop() -> None:
+    """
+    Broadcast live viewer counts to each active lot every 2 seconds.
+
+    Replaces the per-connect/disconnect broadcast that caused O(n²) fanout
+    under load: with 1000 simultaneous connects, the old approach triggered
+    ~500,000 send_json calls in a burst, saturating the event loop.
+    """
+    while True:
+        await asyncio.sleep(2)
+        for lot_id in list(manager.rooms.keys()):
+            count = manager.watcher_count(lot_id)
+            if count > 0:
+                await manager.broadcast(lot_id, {
+                    "event_type": "WATCHER_COUNT",
+                    "lot_id": lot_id,
+                    "count": count,
+                })
+
 
 async def kafka_to_redis_loop(app: FastAPI) -> None:
     """
@@ -116,11 +157,13 @@ async def lifespan(app: FastAPI):
 
     kafka_task = asyncio.create_task(kafka_to_redis_loop(app))
     sub_task = asyncio.create_task(redis_subscriber_loop(app))
+    watcher_task = asyncio.create_task(watcher_count_broadcast_loop())
 
     yield
 
     kafka_task.cancel()
     sub_task.cancel()
+    watcher_task.cancel()
     await app.state.redis.aclose()
     logger.info("websocket-service stopped")
 
@@ -131,8 +174,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET"],
+    allow_headers=["Content-Type"],
 )
 
 
@@ -147,18 +190,25 @@ async def lot_ws(websocket: WebSocket, lot_id: str):
 
     Query params:
       auction_id — required, used for state snapshot lookup
+
+    Authentication: requires a valid oni_token HttpOnly cookie (same JWT as REST API).
     """
+    user_id = _authenticate_websocket(websocket)
+    if not user_id:
+        await websocket.close(code=1008, reason="Unauthorized")
+        return
+
     auction_id = websocket.query_params.get("auction_id", "")
 
     await websocket.accept()
     manager.connect(lot_id, websocket)
 
-    # Send full state snapshot immediately on connect
-    snapshot = await get_lot_snapshot(app.state.redis, auction_id, lot_id)
-    await websocket.send_json(snapshot)
-    logger.info("WS connected | lot=%s auction=%s", lot_id, auction_id)
-
     try:
+        # Send full state snapshot immediately on connect
+        snapshot = await get_lot_snapshot(app.state.redis, auction_id, lot_id)
+        await websocket.send_json(snapshot)
+        logger.info("WS connected | lot=%s auction=%s user=%s", lot_id, auction_id, user_id)
+
         while True:
             # Keep connection alive — client can send pings, we ignore them
             await websocket.receive_text()
@@ -167,6 +217,49 @@ async def lot_ws(websocket: WebSocket, lot_id: str):
     finally:
         manager.disconnect(lot_id, websocket)
         logger.info("WS disconnected | lot=%s", lot_id)
+
+
+@app.websocket("/ws/auction/{auction_id}")
+async def auction_ws(websocket: WebSocket, auction_id: str):
+    """
+    Connect to a live auction feed by auction_id (resolves lot_id internally).
+
+    Clients connect with the auction_id they have from the URL — the service
+    looks up the lot_id from Redis and joins the correct room.
+
+    Authentication: requires a valid oni_token HttpOnly cookie (same JWT as REST API).
+    """
+    user_id = _authenticate_websocket(websocket)
+    if not user_id:
+        await websocket.close(code=1008, reason="Unauthorized")
+        return
+
+    r: aioredis.Redis = app.state.redis
+
+    await websocket.accept()
+
+    lot_id_bytes = await r.hget(f"auction:{auction_id}", "lot_id")
+
+    if not lot_id_bytes:
+        await websocket.send_json({"type": "ERROR", "code": "AUCTION_NOT_FOUND"})
+        await websocket.close()
+        return
+
+    lot_id = lot_id_bytes.decode()
+    manager.connect(lot_id, websocket)
+
+    try:
+        snapshot = await get_lot_snapshot(r, auction_id, lot_id)
+        await websocket.send_json(snapshot)
+        logger.info("WS connected | auction=%s lot=%s user=%s", auction_id, lot_id, user_id)
+
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        manager.disconnect(lot_id, websocket)
+        logger.info("WS disconnected | auction=%s lot=%s", auction_id, lot_id)
 
 
 # ─────────────────────────────────────────────
