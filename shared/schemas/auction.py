@@ -13,6 +13,7 @@ class AuctionStatus(StrEnum):
     SCHEDULED = "SCHEDULED"
     ACTIVE = "ACTIVE"
     CLOSING = "CLOSING"
+    PAUSED = "PAUSED"
     CLOSED = "CLOSED"
     SETTLED = "SETTLED"
 
