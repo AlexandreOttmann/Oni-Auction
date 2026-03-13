@@ -16,6 +16,8 @@ class AuctionEventType(StrEnum):
     AUCTION_STARTED   = "AUCTION_STARTED"
     AUCTION_CLOSED    = "AUCTION_CLOSED"
     AUCTION_SETTLED   = "AUCTION_SETTLED"
+    AUCTION_EXTENDED  = "AUCTION_EXTENDED"   # Admin: +5 min added to ends_at
+    AUCTION_PAUSED    = "AUCTION_PAUSED"     # Admin: bidding halted
 
     # Lot-level
     LOT_OPENED            = "LOT_OPENED"
@@ -41,6 +43,9 @@ class AuctionLifecycleEvent(BaseModel):
     # Populated on DUTCH_ROUND_ADVANCED
     current_price: Optional[float] = None
     round_number: Optional[int] = None
+
+    # Populated on AUCTION_EXTENDED
+    new_ends_at: Optional[str] = None
 
     timestamp: str = Field(default_factory=_now_iso)
 

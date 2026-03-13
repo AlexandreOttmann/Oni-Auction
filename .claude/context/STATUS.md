@@ -52,7 +52,7 @@ Phase 5 — Docker + Kubernetes ⬜ NOT STARTED
 | React Admin Dashboard | `feat/bid-worker-ws-service` | ✅ done |
 
 **What exists:**
-- `services/auction-api/` — POST /bids (Kafka produce), GET /auctions (DB list with bid aggregation), GET /auctions/{id} (Redis read), POST/GET /auth/* (cookie auth), health check
+- `services/auction-api/` — POST /bids, GET /bids/mine (buyer bid history + win/outbid status), GET /auctions (DB list + ?seller_id= filter), GET /auctions/{id} (Redis read), POST /auctions (create with lots array), POST /auctions/{id}/extend (ADMIN +5min), POST /auctions/{id}/pause (ADMIN), POST /auctions/{id}/close-early (ADMIN), POST/GET /auth/* (cookie auth), health check
 - `services/bid-worker/` — English bid validation, Dutch win logic, Redis updates, PostgreSQL persistence, DLQ
 - `services/websocket-service/` — /ws/lot/{lot_id}, state snapshot on connect, Kafka→Redis pub/sub broadcast, /stats
 - `services/auction-timer/` — scheduler loop (SCHEDULED→ACTIVE, English CLOSING/CLOSED, Dutch round advancement + no-winner close), soft-close Kafka consumer (extends ends_at on last-minute English bids), publishes LOT_OPENED / LOT_CLOSING / LOT_CLOSED / DUTCH_ROUND_ADVANCED to auction_events + Redis pub/sub
@@ -126,7 +126,9 @@ Run: `bash k6/run-all.sh` (requires `brew install k6` + stack running + seed-red
 
 ## Up Next
 
-1. **`/senior-security`** → threat model + secure code review before any branch merges to main
+1. **`/senior-frontend`** → implement BuyerDashboard (`buyer-dashboard.md`), AuctionBuilder (`auction-builder.md`), AdminAuctionMonitor (`admin-auction-monitor.md`) — all backend endpoints now exist on `feat/new-endpoints`
+2. **`/senior-backend`** → LOW findings (L1 password reset, L2 JWT refresh token)
+3. **`/senior-qa`** → tests for GET /bids/mine, POST /auctions, admin actions (extend/pause/close-early)
 
 ---
 
@@ -149,6 +151,7 @@ Run: `bash k6/run-all.sh` (requires `brew install k6` + stack running + seed-red
 |--------|-------|
 | `feat/infra-foundation` | ✅ pushed |
 | `feat/bid-worker-ws-service` | ✅ pushed |
+| `feat/new-endpoints` | 🔄 open |
 
 ---
 

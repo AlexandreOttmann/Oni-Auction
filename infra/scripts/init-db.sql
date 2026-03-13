@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS auctions (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title        TEXT NOT NULL,
   type         TEXT NOT NULL CHECK (type IN ('ENGLISH', 'DUTCH')),
-  status       TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'SCHEDULED', 'ACTIVE', 'CLOSING', 'CLOSED', 'SETTLED')),
+  status       TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'SCHEDULED', 'ACTIVE', 'CLOSING', 'PAUSED', 'CLOSED', 'SETTLED')),
   lot_id       UUID REFERENCES lots(id),
   starts_at    TIMESTAMPTZ,
   ends_at      TIMESTAMPTZ,
