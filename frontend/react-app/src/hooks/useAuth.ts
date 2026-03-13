@@ -24,7 +24,8 @@ export function useAuth() {
       }
       const data = await res.json()
       setUser({ id: data.user_id, name: data.name, email, role: data.role })
-      navigate(data.role === 'ADMIN' ? '/dashboard' : '/')
+      const role = data.role
+      navigate(role === 'ADMIN' ? '/dashboard' : role === 'SELLER' ? '/my-auctions' : '/my-bids')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Invalid email or password.')
     } finally {
