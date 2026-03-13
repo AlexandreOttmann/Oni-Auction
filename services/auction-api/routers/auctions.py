@@ -231,46 +231,46 @@ async def create_auction(
     lot_ids: list[str] = []
     first_lot_id: Optional[str] = None
 
-    async with db.begin():
-        for lot in body.lots:
-            lot_id = str(uuid4())
-            lot_ids.append(lot_id)
-            await db.execute(text("""
-                INSERT INTO lots (id, title, description, starting_price, price_floor, price_step, round_duration, seller_id)
-                VALUES (:id, :title, :description, :starting_price, :price_floor, :price_step, :round_duration, :seller_id)
-            """), {
-                "id": lot_id,
-                "title": lot.title,
-                "description": lot.description,
-                "starting_price": lot.starting_price,
-                "price_floor": lot.price_floor,
-                "price_step": lot.price_step,
-                "round_duration": lot.round_duration,
-                "seller_id": body.seller_id,
-            })
-            if first_lot_id is None:
-                first_lot_id = lot_id
-
-        starts_at = None
-        if body.starts_at:
-            try:
-                starts_at = datetime.fromisoformat(body.starts_at.replace("Z", "+00:00"))
-            except ValueError:
-                raise HTTPException(status_code=400, detail={"code": "INVALID_STARTS_AT"})
-
-        auction_id = str(uuid4())
+    for lot in body.lots:
+        lot_id = str(uuid4())
+        lot_ids.append(lot_id)
         await db.execute(text("""
-            INSERT INTO auctions (id, title, type, status, lot_id, starts_at, created_by)
-            VALUES (:id, :title, :type, :status, :lot_id, :starts_at, :created_by)
+            INSERT INTO lots (id, title, description, starting_price, price_floor, price_step, round_duration, seller_id)
+            VALUES (:id, :title, :description, :starting_price, :price_floor, :price_step, :round_duration, :seller_id)
         """), {
-            "id": auction_id,
-            "title": body.title,
-            "type": body.type.value,
-            "status": body.status.value,
-            "lot_id": first_lot_id,
-            "starts_at": starts_at,
-            "created_by": str(current_user["id"]),
+            "id": lot_id,
+            "title": lot.title,
+            "description": lot.description,
+            "starting_price": lot.starting_price,
+            "price_floor": lot.price_floor,
+            "price_step": lot.price_step,
+            "round_duration": lot.round_duration,
+            "seller_id": body.seller_id,
         })
+        if first_lot_id is None:
+            first_lot_id = lot_id
+
+    starts_at = None
+    if body.starts_at:
+        try:
+            starts_at = datetime.fromisoformat(body.starts_at.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail={"code": "INVALID_STARTS_AT"})
+
+    auction_id = str(uuid4())
+    await db.execute(text("""
+        INSERT INTO auctions (id, title, type, status, lot_id, starts_at, created_by)
+        VALUES (:id, :title, :type, :status, :lot_id, :starts_at, :created_by)
+    """), {
+        "id": auction_id,
+        "title": body.title,
+        "type": body.type.value,
+        "status": body.status.value,
+        "lot_id": first_lot_id,
+        "starts_at": starts_at,
+        "created_by": str(current_user["id"]),
+    })
+    await db.commit()
 
     logger.info(
         "Auction created | id=%s type=%s status=%s lots=%d created_by=%s",
@@ -313,11 +313,11 @@ async def extend_auction(
     new_ends = current_ends + timedelta(minutes=5)
     new_ends_iso = new_ends.isoformat().replace("+00:00", "Z")
 
-    async with db.begin():
-        await db.execute(
-            text("UPDATE auctions SET status = 'ACTIVE', ends_at = :ends_at WHERE id = :id"),
-            {"ends_at": new_ends, "id": auction_id},
-        )
+    await db.execute(
+        text("UPDATE auctions SET status = 'ACTIVE', ends_at = :ends_at WHERE id = :id"),
+        {"ends_at": new_ends, "id": auction_id},
+    )
+    await db.commit()
 
     lot_id = str(row["lot_id"]) if row["lot_id"] else None
     if lot_id:
@@ -368,11 +368,11 @@ async def pause_auction(
             detail={"code": "AUCTION_NOT_PAUSABLE", "status": row["status"]},
         )
 
-    async with db.begin():
-        await db.execute(
-            text("UPDATE auctions SET status = 'PAUSED' WHERE id = :id"),
-            {"id": auction_id},
-        )
+    await db.execute(
+        text("UPDATE auctions SET status = 'PAUSED' WHERE id = :id"),
+        {"id": auction_id},
+    )
+    await db.commit()
 
     lot_id = str(row["lot_id"]) if row["lot_id"] else None
     if lot_id:
@@ -429,11 +429,11 @@ async def close_auction_early(
             price_key = "current_price" if s.get("auction_type") == "DUTCH" else "highest_bid"
             final_price = float(s[price_key]) if price_key in s else None
 
-    async with db.begin():
-        await db.execute(
-            text("UPDATE auctions SET status = 'CLOSED', ends_at = NOW() WHERE id = :id"),
-            {"id": auction_id},
-        )
+    await db.execute(
+        text("UPDATE auctions SET status = 'CLOSED', ends_at = NOW() WHERE id = :id"),
+        {"id": auction_id},
+    )
+    await db.commit()
 
     if lot_id:
         await r.hset(f"lot:{lot_id}:state", mapping={"status": "CLOSED", "ends_at": now_iso})
